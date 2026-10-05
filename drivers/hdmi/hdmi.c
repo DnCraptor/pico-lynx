@@ -61,7 +61,9 @@ static uint32_t irq_inx = 0;
 
 //функции и константы HDMI
 
-#define BASE_HDMI_CTRL_INX (240)
+// palette slots BASE..BASE+3 hold the TMDS sync symbols, 255 is the
+// background colour; frame pixels in this range are shown as near colours
+#define BASE_HDMI_CTRL_INX (251)
 //программа конвертации адреса
 
 uint16_t pio_program_instructions_conv_HDMI[] = {
@@ -105,8 +107,14 @@ static uint64_t get_ser_diff_data(const uint16_t dataR, const uint16_t dataG, co
     for (int i = 0; i < 10; i++) {
         out64 <<= 6;
         if (i == 5) out64 <<= 2;
+#ifdef PICO_PC
+        /* Olimex PICO-PC: lane D1 is on GPIO18/19 and D2 on GPIO16/17 */
+        uint8_t bG = (dataR >> (9 - i)) & 1;
+        uint8_t bR = (dataG >> (9 - i)) & 1;
+#else
         uint8_t bR = (dataR >> (9 - i)) & 1;
         uint8_t bG = (dataG >> (9 - i)) & 1;
+#endif
         uint8_t bB = (dataB >> (9 - i)) & 1;
 
         bR |= (bR ^ 1) << 1;
@@ -213,7 +221,10 @@ static void __scratch_y("hdmi_driver") dma_handler_HDMI() {
                 while (activ_buf_end > output_buffer) {
                     if (input_buffer < input_buffer_end) {
                         uint8_t i_color = *input_buffer++;
-                        i_color = ((i_color & 0xf0) == 0xf0) ? 255 : i_color;
+                        /* Lynx pixels are RRRGGGBB: dropping the low R bit gives the
+                         * nearest colour outside the reserved slots (251..255 ->
+                         * 219..223, one red step darker) */
+                        if (i_color >= BASE_HDMI_CTRL_INX) i_color ^= 0x20;
                         *output_buffer++ = i_color;
                         *output_buffer++ = i_color;
                     }
@@ -247,7 +258,7 @@ static void __scratch_y("hdmi_driver") dma_handler_HDMI() {
             default:
                 for (int i = SCREEN_WIDTH; i--;) {
                     uint8_t i_color = *input_buffer++;
-                    i_color = (i_color & 0xf0) == 0xf0 ? 255 : i_color;
+                    if (i_color >= BASE_HDMI_CTRL_INX) i_color ^= 0x20; /* see above */
                     *output_buffer++ = i_color;
                 }
                 break;
@@ -355,7 +366,7 @@ static inline bool hdmi_init() {
     pio_set_x(PIO_VIDEO_ADDR, SM_conv, ((uint32_t)conv_color >> 12));
 
     //заполнение палитры
-    for (int ci = 0; ci < 240; ci++) graphics_set_palette(ci, palette[ci]); //
+    for (int ci = 0; ci < BASE_HDMI_CTRL_INX; ci++) graphics_set_palette(ci, palette[ci]); //
 
     //255 - цвет фона
     graphics_set_palette(255, palette[255]);

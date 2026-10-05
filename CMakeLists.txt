@@ -17,6 +17,7 @@ set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/boards )
 set(PICO_PLATFORM "rp2350" CACHE STRING "Chip type")
 #set(PICO_PLATFORM "rp2040" CACHE STRING "Chip type")
 #set(PICO_BOARD "murmulator" CACHE STRING "Board type")
+#set(PICO_BOARD "olimex-pico-pc" CACHE STRING "Board type")
 set(PICO_BOARD "murmulator2" CACHE STRING "Board type")
 include(pico_sdk_import.cmake)
 
@@ -35,7 +36,9 @@ option(m1p2launcher "Enable m1p2-launcher support" OFF)
 endif()
 
 #set(m1p2launcher ON)
+if (NOT ${PICO_BOARD} MATCHES "olimex-pico-pc") # the PICO-PC audio jack is PWM
 set(I2S ON)
+endif()
 #set(TFT ON)
 #set(ILI9341 ON)
 #set(HDMI ON)
@@ -87,6 +90,8 @@ if( ${PICO_PLATFORM} MATCHES "rp2040" )
 	pico_set_boot_stage2(${PROJECT_NAME} slower_boot2)
 	if ( ${PICO_BOARD} MATCHES "murmulator2")
 		SET(BUILD_NAME "m2p1-${PROJECT_NAME}")
+	elseif ( ${PICO_BOARD} MATCHES "olimex-pico-pc")
+		SET(BUILD_NAME "PCp1-${PROJECT_NAME}")
 	else()
 		SET(BUILD_NAME "m1p1-${PROJECT_NAME}")
 	endif()
@@ -96,6 +101,8 @@ else()
 	endif()
 	if ( ${PICO_BOARD} MATCHES "murmulator2")
 		SET(BUILD_NAME "m2p2-${PROJECT_NAME}")
+	elseif ( ${PICO_BOARD} MATCHES "olimex-pico-pc")
+		SET(BUILD_NAME "PCp2-${PROJECT_NAME}")
 	else()
 		SET(BUILD_NAME "m1p2-${PROJECT_NAME}")
 	endif()
@@ -103,6 +110,8 @@ endif()
 
 if ( ${PICO_BOARD} MATCHES "murmulator2")
 pico_set_program_name(lynx "Atari Lynx emulator by xrip for MURMULATOR 2.0 board")
+elseif ( ${PICO_BOARD} MATCHES "olimex-pico-pc")
+pico_set_program_name(lynx "Atari Lynx emulator by xrip for Olimex RP2040-PICO-PC")
 else()
 pico_set_program_name(lynx "Atari Lynx emulator by xrip for MURMULATOR 1.x board")
 endif()
@@ -175,8 +184,16 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         hardware_flash
 
 #		tinyusb_board
-		tinyusb_device
 )
+
+if ( ${PICO_BOARD} MATCHES "olimex-pico-pc")
+	# The PICO-PC keyboard is a USB keyboard on the Pico's native USB port
+	# (TinyUSB host, src/hid_app.cpp); PS/2 on GPIO0/1 keeps working too.
+	target_compile_definitions(${PROJECT_NAME} PRIVATE KBDUSB)
+	target_link_libraries(${PROJECT_NAME} PRIVATE tinyusb_host)
+else()
+	target_link_libraries(${PROJECT_NAME} PRIVATE tinyusb_device)
+endif()
 
 target_link_options(${PROJECT_NAME} PRIVATE -Xlinker --print-memory-usage --data-sections --function-sections)
 #add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
